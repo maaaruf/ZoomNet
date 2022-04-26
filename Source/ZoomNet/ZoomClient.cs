@@ -156,6 +156,9 @@ namespace ZoomNet
 		/// </summary>
 		public IReports Reports { get; private set; }
 
+		/// <inheritdoc/>
+		public IWorkspaces Workspaces { get; private set; }
+
 		#endregion
 
 		#region CTOR
@@ -257,6 +260,7 @@ namespace ZoomNet
 			Webinars = new Webinars(_fluentClient);
 			Dashboards = new Dashboards(_fluentClient);
 			Reports = new Reports(_fluentClient);
+			Workspaces = new Workspaces(_fluentClient);
 		}
 
 		/// <summary>
