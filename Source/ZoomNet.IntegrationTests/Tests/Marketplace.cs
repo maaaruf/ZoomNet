@@ -18,7 +18,13 @@ namespace ZoomNet.IntegrationTests.Tests
 			await log.WriteLineAsync($"Retrieved {paginatedPublicApps.Records.Length} public apps on the marketplace").ConfigureAwait(false);
 
 			var paginatedCreatedApps = await client.Marketplace.GetCreatedAppsAsync(100, null, cancellationToken).ConfigureAwait(false);
-			await log.WriteLineAsync($"This account created {paginatedCreatedApps.TotalRecords} apps.").ConfigureAwait(false);
+			await log.WriteLineAsync($"This account created the following {paginatedCreatedApps.TotalRecords} apps:").ConfigureAwait(false);
+
+			foreach (var app in paginatedCreatedApps.Records)
+			{
+				var appInfo = await client.Marketplace.GetAppInfoAsync(app.Id, cancellationToken).ConfigureAwait(false);
+				await log.WriteLineAsync($"  - {appInfo.Name}: {appInfo.Description}").ConfigureAwait(false);
+			}
 		}
 	}
 }

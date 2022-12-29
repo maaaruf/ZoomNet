@@ -33,5 +33,13 @@ namespace ZoomNet.Resources
 		/// An array of <see cref="AppInfo">apps</see>.
 		/// </returns>
 		Task<PaginatedResponseWithToken<AppInfo>> GetCreatedAppsAsync(int recordsPerPage = 30, string pagingToken = null, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Get information about an app.
+		/// </summary>
+		/// <param name="appId">The app Id.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <returns>The <see cref="AppInfoDetailed">detailed information</see>.</returns>
+		Task<AppInfoDetailed> GetAppInfoAsync(string appId, CancellationToken cancellationToken = default);
 	}
 }

@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 namespace ZoomNet.Models
 {
 	/// <summary>
-	/// A marketplace app.
+	/// Summary info about a marketplace app.
 	/// </summary>
 	public class AppInfo
 	{
 		/// <summary>Gets or sets the app id.</summary>
 		[JsonPropertyName("app_id")]
-		public string AppId { get; set; }
+		public string Id { get; set; }
 
 		/// <summary>Gets or sets the name of the app.</summary>
 		[JsonPropertyName("app_name")]
