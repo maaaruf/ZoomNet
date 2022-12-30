@@ -1,5 +1,6 @@
 using Pathoschild.Http.Client;
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ZoomNet.Models;
@@ -18,6 +19,23 @@ namespace ZoomNet.Resources
 		internal Marketplace(Pathoschild.Http.Client.IClient client)
 		{
 			_client = client;
+		}
+
+		/// <inheritdoc/>
+		public async Task<long[]> GetUserEntitlementsAsync(string userId, CancellationToken cancellationToken = default)
+		{
+			var result = await _client
+				.GetAsync($"marketplace/users/{userId}/entitlements")
+				.WithCancellationToken(cancellationToken)
+				.AsRawJsonDocument("entitlements")
+				.ConfigureAwait(false);
+
+			var entitlements = result.RootElement
+				.EnumerateArray()
+				.Select(element => element.GetInt64())
+				.ToArray();
+
+			return entitlements;
 		}
 
 		/// <inheritdoc/>
@@ -41,7 +59,7 @@ namespace ZoomNet.Resources
 				.AsObject<AppInfoDetailed>()
 				.ConfigureAwait(false);
 
-			// Set the Id because, surpisingly, the Zoom API does not include it in the response.
+			// Set the Id because, surprisingly, the Zoom API does not include it in the response.
 			appInfo.Id = appId;
 
 			return appInfo;
