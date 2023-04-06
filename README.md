@@ -78,7 +78,7 @@ var clientId = "... your client ID ...";
 var clientSecret = "... your client secret ...";
 var authorizationCode = "... the code that Zoom issued when you added the OAuth app to your account ...";
 var redirectUri = "... the URI you have configured when setting up your OAuth app ..."; // Please note that Zoom sometimes accepts a null value and sometimes rejects it with a 'Redirect URI mismatch' error
-var connectionInfo = new OAuthConnectionInfo(clientId, clientSecret, authorizationCode,
+var connectionInfo = OAuthConnectionInfo.WithAuthorizationCode(clientId, clientSecret, authorizationCode,
     (newRefreshToken, newAccessToken) =>
     {
         /*
@@ -112,7 +112,7 @@ Once the autorization code is converted into an access token and a refresh token
 var clientId = "... your client ID ...";
 var clientSecret = "... your client secret ...";
 var refreshToken = Environment.GetEnvironmentVariable("ZOOM_OAUTH_REFRESHTOKEN", EnvironmentVariableTarget.User);
-var connectionInfo = new OAuthConnectionInfo(clientId, clientSecret, refreshToken, null,
+var connectionInfo = OAuthConnectionInfo.WithRefreshToken(clientId, clientSecret, refreshToken,
     (newRefreshToken, newAccessToken) =>
     {
         /*
@@ -136,9 +136,9 @@ ZoomNet takes care of getting a new access token and it also refreshes a previou
 var clientId = "... your client ID ...";
 var clientSecret = "... your client secret ...";
 var accountId = "... your account id ...";
-var connectionInfo = new OAuthConnectionInfo(clientId, clientSecret, accountId,
-	(_, newAccessToken) =>
-	{
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId,
+    (_, newAccessToken) =>
+    {
         /*
             Server-to-Server OAuth does not use a refresh token. That's why I used '_' as the first parameter
             in this delegate declaration. Furthermore, ZoomNet will take care of getting a new access token
@@ -147,16 +147,49 @@ var connectionInfo = new OAuthConnectionInfo(clientId, clientSecret, accountId,
             In fact, this delegate is completely optional when using Server-to-Server OAuth. Feel free to pass
             a null value in lieu of a delegate.
         */
-	});
+    });
 var zoomClient = new ZoomClient(connectionInfo);
 ```
 
 The delegate being optional in the server-to-server scenario you can therefore simplify the connection info declaration like so:
 
 ```csharp
-var connectionInfo = new OAuthConnectionInfo(clientId, clientSecret, accountId, null);
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId);
 var zoomClient = new ZoomClient(connectionInfo);
 ```
+
+#### Mutliple instances of your application in Server-to-Server OAuth scenarios
+
+One important detail about Server-to-Server OAuth which is not widely known is that requesting a new token automatically invalidates a previously issued token EVEN THOUGH IT HASN'T REACHED ITS EXPIRATION DATE/TIME. This will affect you if you have multiple instances of your application running at the same time. To illustrate what this means, let's say that you have two instances of your application running at the same time. What is going to happen is that instance number 1 will request a new token which it will successfully use for some time until instance number 2 requests its own token. When this second token is issued, the token for instance 1 is invalidated which will cause instance 1 to request a new token. This new token will invalidate token number 2 which will cause instance 2 to request a new token, and so on. As you can see, instance 1 and 2 are fighting each other for a token.
+
+There are a few ways you can overcome this problem:
+
+Solution number 1:
+You can create mutiple OAuth apps in Zoom's management dashboard, one for each instance of your app. This means that each instance will have their own clientId, clientSecret and accountId and therefore they can independently request tokens without interfering with each other.
+
+This puts the onus is on you to create and manage these Zoom apps. Additionally, you are responsible for ensuring that the `OAuthConnectionInfo` in your C# code is initialized with the appropriate values for each instance.
+
+This is a simple and effective solution when you have a relatively small number of instances but, in my opinion, it becomes overwhelming when your number of instances becomes too large.
+
+
+Solution number 2:
+Create a single Zoom OAuth app. Contact Zoom support and request additional "token indices" (also known as "group numbers") for this OAuth app. Subsequently, new tokens can be "scoped" to a given index which means that a token issued for a specific index does not invalidate token for any other index. Hopefully, Zoom will grant you enough token indices and you will be able to dedicate one index for each instance of your application and you can subsequently modify your C# code to "scope"" you OAuth connection to a desired index, like so:
+
+```csharp
+// you initialize the connection info for your first instance like this:
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId, 0);
+
+// for your second instance, like this:
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId, 1);
+
+// instance number 3:
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId, 2);
+
+... and so on ...
+```
+
+Just like solution number 1, this solution works well for scenarios where you have a relatively small number of instances and where Zoom has granted you enough indices.
+
 
 ### Webhook Parser
  
@@ -166,20 +199,20 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace WebApplication1.Controllers
 {
-	[Route("api/[controller]")]
-	[ApiController]
-	public class ZoomWebhooksController : ControllerBase
-	{
-		[HttpPost]
-		public async Task<IActionResult> ReceiveEvent()
-		{
-			var parser = new ZoomNet.WebhookParser();
-			var event = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ZoomWebhooksController : ControllerBase
+    {
+        [HttpPost]
+        public async Task<IActionResult> ReceiveEvent()
+        {
+            var parser = new ZoomNet.WebhookParser();
+            var event = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
 
-			// ... do something with the event ...
+            // ... do something with the event ...
 
-			return Ok();
-		}
+            return Ok();
+        }
     }
 }
 ```
@@ -203,31 +236,31 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace WebApplication1.Controllers
 {
-	[Route("api/[controller]")]
-	[ApiController]
-	public class ZoomWebhookController : ControllerBase
-	{
-		[HttpPost]
-		public async Task<IActionResult> ReceiveEvent()
-		{
-			// Your webhook app's secret token
-			var secretToken = "... your app's secret token ...";
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ZoomWebhookController : ControllerBase
+    {
+        [HttpPost]
+        public async Task<IActionResult> ReceiveEvent()
+        {
+            // Your webhook app's secret token
+            var secretToken = "... your app's secret token ...";
 
-			// Get the signature and the timestamp from the request headers
-			// SIGNATURE_HEADER_NAME and TIMESTAMP_HEADER_NAME are two convenient constants provided by ZoomNet so you don't have to remember the actual names of the headers
-			var signature = Request.Headers[ZoomNet.WebhookParser.SIGNATURE_HEADER_NAME].SingleOrDefault();
-			var timestamp = Request.Headers[ZoomNet.WebhookParser.TIMESTAMP_HEADER_NAME].SingleOrDefault();
+            // Get the signature and the timestamp from the request headers
+            // SIGNATURE_HEADER_NAME and TIMESTAMP_HEADER_NAME are two convenient constants provided by ZoomNet so you don't have to remember the actual names of the headers
+            var signature = Request.Headers[ZoomNet.WebhookParser.SIGNATURE_HEADER_NAME].SingleOrDefault();
+            var timestamp = Request.Headers[ZoomNet.WebhookParser.TIMESTAMP_HEADER_NAME].SingleOrDefault();
 
-			var parser = new ZoomNet.WebhookParser();
+            var parser = new ZoomNet.WebhookParser();
 
-			// The signature will be automatically validated and a security exception thrown if unable to validate
-			var zoomEvent = await parser.VerifyAndParseEventWebhookAsync(Request.Body, secretToken, signature, timestamp).ConfigureAwait(false);
+            // The signature will be automatically validated and a security exception thrown if unable to validate
+            var zoomEvent = await parser.VerifyAndParseEventWebhookAsync(Request.Body, secretToken, signature, timestamp).ConfigureAwait(false);
 
-			// ... do something with the event...
+            // ... do something with the event...
 
-			return Ok();
-		}
-	}
+            return Ok();
+        }
+    }
 }
 ```
 
@@ -243,23 +276,23 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace WebApplication1.Controllers
 {
-	[Route("api/[controller]")]
-	[ApiController]
-	public class ZoomWebhooksController : ControllerBase
-	{
-		[HttpPost]
-		public async Task<IActionResult> ReceiveEvent()
-		{
-			// Your webhook app's secret token
-			var secretToken = "... your app's secret token ...";
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ZoomWebhooksController : ControllerBase
+    {
+        [HttpPost]
+        public async Task<IActionResult> ReceiveEvent()
+        {
+            // Your webhook app's secret token
+            var secretToken = "... your app's secret token ...";
 
-			var parser = new ZoomNet.WebhookParser();
-			var event = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
+            var parser = new ZoomNet.WebhookParser();
+            var event = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
 
-			var endpointUrlValidationEvent = zoomEvent as EndpointUrlValidationEvent;
-			var responsePayload = endpointUrlValidationEvent.GenerateUrlValidationResponse(secretToken);
-			return Ok(responsePayload);
-		}
+            var endpointUrlValidationEvent = zoomEvent as EndpointUrlValidationEvent;
+            var responsePayload = endpointUrlValidationEvent.GenerateUrlValidationResponse(secretToken);
+            return Ok(responsePayload);
+        }
     }
 }
 ```
@@ -273,54 +306,108 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace WebApplication1.Controllers
 {
-	[Route("api/[controller]")]
-	[ApiController]
-	public class ZoomWebhooksController : ControllerBase
-	{
-		[HttpPost]
-		public async Task<IActionResult> ReceiveEvent()
-		{
-			// Your webhook app's secret token
-			var secretToken = "... your app's secret token ...";
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ZoomWebhooksController : ControllerBase
+    {
+        [HttpPost]
+        public async Task<IActionResult> ReceiveEvent()
+        {
+            // Your webhook app's secret token
+            var secretToken = "... your app's secret token ...";
 
-			// SIGNATURE_HEADER_NAME and TIMESTAMP_HEADER_NAME are two convenient constants provided by ZoomNet so you don't have to remember the actual name of the headers
-			var signature = Request.Headers[ZoomNet.WebhookParser.SIGNATURE_HEADER_NAME].SingleOrDefault();
-			var timestamp = Request.Headers[ZoomNet.WebhookParser.TIMESTAMP_HEADER_NAME].SingleOrDefault();
+            // SIGNATURE_HEADER_NAME and TIMESTAMP_HEADER_NAME are two convenient constants provided by ZoomNet so you don't have to remember the actual name of the headers
+            var signature = Request.Headers[ZoomNet.WebhookParser.SIGNATURE_HEADER_NAME].SingleOrDefault();
+            var timestamp = Request.Headers[ZoomNet.WebhookParser.TIMESTAMP_HEADER_NAME].SingleOrDefault();
 
-			var parser = new ZoomNet.WebhookParser();
-			Event zoomEvent;
+            var parser = new ZoomNet.WebhookParser();
+            Event zoomEvent;
 
-			if (!string.IsNullOrEmpty(signature) && !string.IsNullOrEmpty(timestamp))
-			{
-				try
-				{
-					zoomEvent = await parser.VerifyAndParseEventWebhookAsync(Request.Body, secretToken, signature, timestamp).ConfigureAwait(false);
-				}
-				catch (SecurityException e)
-				{
-					// Unable to validate the data. Therefore you should consider the request as suspicious
-					throw;
-				}
-			}
-			else
-			{
-				zoomEvent = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
-			}
+            if (!string.IsNullOrEmpty(signature) && !string.IsNullOrEmpty(timestamp))
+            {
+                try
+                {
+                    zoomEvent = await parser.VerifyAndParseEventWebhookAsync(Request.Body, secretToken, signature, timestamp).ConfigureAwait(false);
+                }
+                catch (SecurityException e)
+                {
+                    // Unable to validate the data. Therefore you should consider the request as suspicious
+                    throw;
+                }
+            }
+            else
+            {
+                zoomEvent = await parser.ParseEventWebhookAsync(Request.Body).ConfigureAwait(false);
+            }
 
-			if (zoomEvent.EventType == EventType.EndpointUrlValidation)
-			{
-				// It's important to include the payload along with your HTTP200 response. This is how you let Zoom know that your URL is valid
-				var endpointUrlValidationEvent = zoomEvent as EndpointUrlValidationEvent;
-				var responsePayload = endpointUrlValidationEvent.GenerateUrlValidationResponse(secretToken);
-				return Ok(responsePayload);
-			}
-			else
-			{
-				// ... do something with the event ...
+            if (zoomEvent.EventType == EventType.EndpointUrlValidation)
+            {
+                // It's important to include the payload along with your HTTP200 response. This is how you let Zoom know that your URL is valid
+                var endpointUrlValidationEvent = zoomEvent as EndpointUrlValidationEvent;
+                var responsePayload = endpointUrlValidationEvent.GenerateUrlValidationResponse(secretToken);
+                return Ok(responsePayload);
+            }
+            else
+            {
+                // ... do something with the event ...
 
-				return Ok();
-			}
-		}
+                return Ok();
+            }
+        }
     }
 }
 ```
+
+### Webhooks over websockets
+
+As of this writing (October 2022), webhooks over websocket is in public beta testing and you can signup if you want to participate in the beta (see [here](https://marketplace.zoom.us/docs/api-reference/websockets/)). 
+
+ZoomNet offers a convenient client to receive and process webhooks events received over a websocket connection. This websocket client will automatically manage the connection, ensuring it is re-established if it's closed for some reason. Additionaly, it will manage the OAuth token and will automatically refresh it when it expires.
+
+Here's how to use it in a C# console application:
+
+```csharp
+using System.Net;
+using ZoomNet;
+using ZoomNet.Models.Webhooks;
+
+var clientId = "... your client id ...";
+var clientSecret = "... your client secret ...";
+var accountId = "... your account id ...";
+var subscriptionId = "... your subscription id ..."; // See instructions below how to get this value
+
+// This is the async delegate that gets invoked when a webhook event is received
+var eventProcessor = new Func<Event, CancellationToken, Task>(async (webhookEvent, cancellationToken) =>
+{
+    if (!cancellationToken.IsCancellationRequested)
+    {
+        // Add your custom logic to process this event
+    }
+});
+
+// Configure cancellation (this allows you to press CTRL+C or CTRL+Break to stop the websocket client)
+var cts = new CancellationTokenSource();
+var exitEvent = new ManualResetEvent(false);
+Console.CancelKeyPress += (s, e) =>
+{
+    e.Cancel = true;
+    cts.Cancel();
+    exitEvent.Set();
+};
+
+// Start the websocket client
+var connectionInfo = OAuthConnectionInfo.ForServerToServer(clientId, clientSecret, accountId);
+using (var client = new ZoomWebSocketClient(connectionInfo, subscriptionId, eventProcessor, proxy, logger))
+{
+    await client.StartAsync(cts.Token).ConfigureAwait(false);
+    exitEvent.WaitOne();
+}
+```
+
+#### How to get your websocket subscription id
+
+When you configure your webhook over websocket in the Zoom Marketplace, Zoom will generate a URL like you can see in this screenshot:
+
+![Screenshot](https://user-images.githubusercontent.com/112710/196733937-7813abdd-9cb5-4a35-ad69-d5f6ac9676e4.png)
+
+Your subscription Id is the last part of the URL. In the example above, the generated URL is similar to `wss://api.zoom.us/v2/webhooks/events?subscription_id=1234567890` and therefore the subscription id is `1234567890`.

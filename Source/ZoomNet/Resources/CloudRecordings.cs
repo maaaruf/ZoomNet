@@ -8,7 +8,6 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using ZoomNet.Models;
-using ZoomNet.Utilities;
 
 namespace ZoomNet.Resources
 {
@@ -365,12 +364,12 @@ namespace ZoomNet.Resources
 		/// <returns>
 		/// The <see cref="Stream"/> containing the file.
 		/// </returns>
-		public async Task<Stream> DownloadFileAsync(string downloadUrl, CancellationToken cancellationToken = default)
+		public Task<Stream> DownloadFileAsync(string downloadUrl, CancellationToken cancellationToken = default)
 		{
-			var tokenHandler = _client.Filters.OfType<ITokenHandler>().SingleOrDefault();
-			var requestUri = downloadUrl + (tokenHandler != null ? "?access_token=" + tokenHandler.Token : string.Empty);
-
-			return await _client.BaseClient.GetStreamAsync(requestUri).ConfigureAwait(false);
+			return _client
+				.GetAsync(downloadUrl)
+				.WithCancellationToken(cancellationToken)
+				.AsStream();
 		}
 
 		private Task UpdateRegistrantsStatusAsync(long meetingId, IEnumerable<string> registrantIds, string status, CancellationToken cancellationToken = default)

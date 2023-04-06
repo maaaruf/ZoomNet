@@ -390,6 +390,26 @@ namespace ZoomNet.Resources
 		}
 
 		/// <summary>
+		/// Recover a deleted meeting.
+		/// </summary>
+		/// <param name="meetingId">The meeting ID.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <returns>The async task.</returns>
+		public Task RecoverAsync(long meetingId, CancellationToken cancellationToken = default)
+		{
+			var data = new JsonObject
+			{
+				{ "action", "recover" }
+			};
+
+			return _client
+				.PutAsync($"meetings/{meetingId}/status")
+				.WithJsonBody(data)
+				.WithCancellationToken(cancellationToken)
+				.AsMessage();
+		}
+
+		/// <summary>
 		/// List registrants of a meeting.
 		/// </summary>
 		/// <param name="meetingId">The meeting ID.</param>
@@ -507,6 +527,40 @@ namespace ZoomNet.Resources
 				.WithJsonBody(data)
 				.WithCancellationToken(cancellationToken)
 				.AsObject<RegistrantInfo>();
+		}
+
+		/// <summary>
+		/// Register up to 30 registrants at once for a meeting that requires registration.
+		/// </summary>
+		/// <param name="meetingId">The meeting ID.</param>
+		/// <param name="registrants">An array of registrants.</param>
+		/// <param name="autoApprove">Indicates if the registrant should be automatically approved.</param>
+		/// <param name="registrantsConfirmationEmail">Indicates if send confirmation Email to Registrants.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <returns>
+		/// An array of <see cref="BatchRegistrantInfo" />.
+		/// </returns>
+		public Task<BatchRegistrantInfo[]> PerformBatchRegistrationAsync(long meetingId, IEnumerable<BatchRegistrant> registrants, bool autoApprove = false, bool registrantsConfirmationEmail = false, CancellationToken cancellationToken = default)
+		{
+			if (registrants == null || registrants.Any() == false || registrants.Count() > 30)
+			{
+				throw new ArgumentOutOfRangeException("The registants count must be between 1 and 30.");
+			}
+
+			var data = new JsonObject
+			{
+				{ "registrants", registrants },
+				{ "auto_approve", autoApprove },
+				{ "registrants_confirmation_email", registrantsConfirmationEmail },
+			};
+
+			var response = _client
+				.PostAsync($"meetings/{meetingId}/batch_registrants")
+				.WithJsonBody(data)
+				.WithCancellationToken(cancellationToken)
+				.AsObject<BatchRegistrantInfo[]>("registrants");
+
+			return response;
 		}
 
 		/// <summary>
@@ -893,7 +947,7 @@ namespace ZoomNet.Resources
 		/// <inheritdoc/>
 		public Task<InviteLink[]> CreateInviteLinksAsync(long meetingId, IEnumerable<string> names, long timeToLive = 7200, CancellationToken cancellationToken = default)
 		{
-			if (names == null || !names.Any()) throw new ArgumentNullException("You must provide at least one name", nameof(names));
+			if (names == null || !names.Any()) throw new ArgumentNullException(nameof(names), "You must provide at least one name");
 
 			var data = new JsonObject
 			{
@@ -1013,7 +1067,7 @@ namespace ZoomNet.Resources
 		/// <inheritdoc/>
 		public Task InviteParticipantsAsync(long meetingId, IEnumerable<string> emailAddresses, CancellationToken cancellationToken = default)
 		{
-			if (emailAddresses == null || !emailAddresses.Any()) throw new ArgumentNullException("You must provide at least one email address", nameof(emailAddresses));
+			if (emailAddresses == null || !emailAddresses.Any()) throw new ArgumentNullException(nameof(emailAddresses), "You must provide at least one email address");
 
 			var data = new JsonObject
 			{
@@ -1026,6 +1080,60 @@ namespace ZoomNet.Resources
 				.WithJsonBody(data)
 				.WithCancellationToken(cancellationToken)
 				.AsMessage();
+		}
+
+		/// <inheritdoc/>
+		public Task<string> CreateTemplateFromExistingMeeting(string userId, long meetingId, string templateName, bool saveRecurrence = false, bool overwrite = false, CancellationToken cancellationToken = default)
+		{
+			var data = new JsonObject
+			{
+				{ "meeting_id", meetingId },
+				{ "name", templateName },
+				{ "save_recurrence", saveRecurrence },
+				{ "overwrite", overwrite },
+			};
+
+			return _client
+				.PostAsync($"users/{userId}/meeting_templates")
+				.WithJsonBody(data)
+				.WithCancellationToken(cancellationToken)
+				.AsObject<string>("id");
+		}
+
+		/// <inheritdoc/>
+		public Task<string> GetTokenForClosedCaptioningAsync(long meetingId, CancellationToken cancellationToken = default)
+		{
+			return _client
+				.GetAsync($"meetings/{meetingId}/token?type=closed_caption_token")
+				.WithCancellationToken(cancellationToken)
+				.AsObject<string>("token");
+		}
+
+		/// <inheritdoc/>
+		public Task<string> GetTokenForLocalRecordingAsync(long meetingId, CancellationToken cancellationToken = default)
+		{
+			return _client
+				.GetAsync($"meetings/{meetingId}/jointoken/local_recording")
+				.WithCancellationToken(cancellationToken)
+				.AsObject<string>("token");
+		}
+
+		/// <inheritdoc/>
+		public Task<string> GetTokenForLocalArchivingAsync(long meetingId, CancellationToken cancellationToken = default)
+		{
+			return _client
+				.GetAsync($"meetings/{meetingId}/jointoken/local_archiving")
+				.WithCancellationToken(cancellationToken)
+				.AsObject<string>("token");
+		}
+
+		/// <inheritdoc/>
+		public Task<string> GetTokenForLiveStreamingAsync(long meetingId, CancellationToken cancellationToken = default)
+		{
+			return _client
+				.GetAsync($"meetings/{meetingId}/jointoken/live_streaming")
+				.WithCancellationToken(cancellationToken)
+				.AsObject<string>("token");
 		}
 
 		private Task UpdateRegistrantsStatusAsync(long meetingId, IEnumerable<(string RegistrantId, string RegistrantEmail)> registrantsInfo, string status, string occurrenceId = null, CancellationToken cancellationToken = default)
